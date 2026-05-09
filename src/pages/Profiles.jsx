@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+!import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
-import ProfileCard from '../components/ProfileCard'
-import ProfileForm from '../components/ProfileForm'
+import ProfileCard from './ProfileCard'
+import ProfileForm from './ProfileForm'
 
 function Profiles() {
   const [profiles, setProfiles] = useState([])
@@ -13,12 +13,15 @@ function Profiles() {
   }, [])
 
   async function fetchProfiles() {
-    const { data, error } = await supabase
+    const { data: { session } } = await supabase.auth.getSession()
+
+    const { data } = await supabase
       .from('profiles')
       .select('*')
+      .eq('user_id', session?.user?.id)
       .order('created_at', { ascending: true })
 
-    if (!error) setProfiles(data)
+    if (data) setProfiles(data)
   }
 
   function handleEdit(profile) {
@@ -48,52 +51,3 @@ function Profiles() {
             onEdit={() => handleEdit(profile)}
             onDelete={() => handleDelete(profile.id)}
           />
-        ))}
-
-        <button style={styles.addButton} onClick={() => setShowForm(true)}>
-          + Nuevo Perfil
-        </button>
-      </div>
-
-      {showForm && (
-        <ProfileForm
-          profile={editingProfile}
-          onClose={handleClose}
-          onSave={() => {
-            fetchProfiles()
-            handleClose()
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-const styles = {
-  container: {
-    padding: '24px',
-    maxWidth: '600px',
-    margin: '0 auto',
-  },
-  title: {
-    fontSize: '24px',
-    marginBottom: '24px',
-    textAlign: 'center',
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-    gap: '16px',
-  },
-  addButton: {
-    height: '160px',
-    background: 'rgba(255,255,255,0.05)',
-    border: '2px dashed rgba(255,255,255,0.2)',
-    borderRadius: '12px',
-    color: '#ffffff',
-    fontSize: '16px',
-    cursor: 'pointer',
-  }
-}
-
-export default Profiles
