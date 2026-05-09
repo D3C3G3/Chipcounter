@@ -20,6 +20,9 @@ function ProfileForm({ profile, onClose, onSave }) {
     if (!nickname.trim()) return alert('El apodo es obligatorio')
     setLoading(true)
 
+    const { data: { session } } = await supabase.auth.getSession()
+    const userId = session?.user?.id
+
     let avatar_url = profile?.avatar_url || null
 
     if (avatarFile) {
@@ -44,7 +47,7 @@ function ProfileForm({ profile, onClose, onSave }) {
     } else {
       await supabase
         .from('profiles')
-        .insert([{ nickname, avatar_url }])
+        .insert([{ nickname, avatar_url, user_id: userId }])
     }
 
     setLoading(false)
