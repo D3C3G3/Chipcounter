@@ -73,4 +73,6 @@ const styles = {
   container: {
     padding: '24px',
     maxWidth: '600px',
-    margin: '
+    margin: '0 auto',
+  }
+}
