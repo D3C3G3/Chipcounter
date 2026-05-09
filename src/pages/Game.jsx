@@ -54,31 +54,87 @@ function Game() {
     setPlayer(profile)
   }
 
-  async function handleStart() {
-    if (players.length < 2) return
+async function handleStart() {
+  if (players.length < 2) return
 
-    const shuffled = [...players].sort(() => Math.random() - 0.5)
-    for (let i = 0; i < shuffled.length; i++) {
-      await supabase.from('room_players')
-        .update({ turn_order: i, stack: room.stack_inicial, folded: false, current_bet: 0 })
-        .eq('id', shuffled[i].id)
-    }
-
-    const dealer = shuffled[0]
-    const firstPlayer = shuffled[1 % shuffled.length]
-
-    await supabase.from('rooms').update({
-      status: 'playing',
-      dealer_id: dealer.id,
-      current_player_id: firstPlayer.id,
-      pot: 0,
-      current_bet: 0,
-      round: 1,
-    }).eq('id', roomId)
-
-    await fetchRoom()
-    await fetchPlayers()
+  const shuffled = [...players].sort(() => Math.random() - 0.5)
+  for (let i = 0; i < shuffled.length; i++) {
+    await supabase.from('room_players')
+      .update({ turn_order: i, stack: room.stack_inicial, folded: false, current_bet: 0 })
+      .eq('id', shuffled[i].id)
   }
+
+  const dealer = shuffled[0]
+  await startRound(shuffled, dealer.id, room)
+}
+
+async function startRound(orderedPlayers, dealerId, currentRoom) {
+  const total = orderedPlayers.length
+  const dealerIndex = orderedPlayers.findIndex(p => p.id === dealerId)
+
+  const sbIndex = (dealerIndex + 1) % total
+  const bbIndex = (dealerIndex + 2) % total
+  const firstIndex = (dealerIndex + 3) % total
+
+  const sb = orderedPlayers[sbIndex]
+  const bb = orderedPlayers[bbIndex]
+  const first = orderedPlayers[firstIndex]
+
+  const sbAmount = Math.min(currentRoom.small_blind, sb.stack)
+  const bbAmount = Math.min(currentRoom.big_blind, bb.stack)
+
+  await supabase.from('room_players').update({
+    stack: sb.stack - sbAmount,
+    current_bet: sbAmount,
+    folded: false,
+  }).eq('id', sb.id)
+
+  await supabase.from('room_players').update({
+    stack: bb.stack - bbAmount,
+    current_bet: bbAmount,
+    folded: false,
+  }).eq('id', bb.id)
+
+  await supabase.from('rooms').update({
+    status: 'playing',
+    dealer_id: dealerId,
+    current_player_id: first.id,
+    pot: sbAmount + bbAmount,
+    current_bet: bbAmount,
+    round: (currentRoom.round || 0) + 1,
+  }).eq('id', roomId)
+
+  await fetchRoom()
+  await fetchPlayers()
+}
+
+async function handleWinner(winnerIds) {
+  const share = Math.floor(room.pot / winnerIds.length)
+  for (const id of winnerIds) {
+    const winner = players.find(p => p.id === id)
+    await supabase.from('room_players').update({
+      stack: winner.stack + share
+    }).eq('id', id)
+  }
+
+  const allPlayers = [...players].sort((a, b) => a.turn_order - b.turn_order)
+  const dealerIndex = allPlayers.findIndex(p => p.id === room.dealer_id)
+  const nextDealerIndex = (dealerIndex + 1) % allPlayers.length
+  const nextDealer = allPlayers[nextDealerIndex]
+
+  await supabase.from('room_players').update({
+    current_bet: 0
+  }).in('id', players.map(p => p.id))
+
+  await startRound(allPlayers, nextDealer.id, {
+    ...room,
+    pot: 0,
+    current_bet: 0,
+  })
+
+  setShowWinner(false)
+}
+
 
   async function handleWinner(winnerIds) {
     const share = Math.floor(room.pot / winnerIds.length)
