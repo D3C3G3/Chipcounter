@@ -74,5 +74,26 @@ const styles = {
     padding: '24px',
     maxWidth: '600px',
     margin: '0 auto',
+  },
+  title: {
+    fontSize: '24px',
+    marginBottom: '24px',
+    textAlign: 'center',
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+    gap: '16px',
+  },
+  addButton: {
+    height: '160px',
+    background: 'rgba(255,255,255,0.05)',
+    border: '2px dashed rgba(255,255,255,0.2)',
+    borderRadius: '12px',
+    color: '#ffffff',
+    fontSize: '16px',
+    cursor: 'pointer',
   }
 }
+
+export default Profiles
