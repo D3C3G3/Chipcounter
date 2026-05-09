@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
-import ProfileCard from './ProfileCard'
-import ProfileForm from './ProfileForm'
+import ProfileCard from '../components/ProfileCard'
+import ProfileForm from '../components/ProfileForm'
 
 function Profiles() {
   const [profiles, setProfiles] = useState([])
@@ -42,7 +42,6 @@ function Profiles() {
   return (
     <div style={styles.container}>
       <h1 style={styles.title}>Mis Perfiles</h1>
-
       <div style={styles.grid}>
         {profiles.map(profile => (
           <ProfileCard
@@ -51,3 +50,50 @@ function Profiles() {
             onEdit={() => handleEdit(profile)}
             onDelete={() => handleDelete(profile.id)}
           />
+        ))}
+        <button style={styles.addButton} onClick={() => setShowForm(true)}>
+          + Nuevo Perfil
+        </button>
+      </div>
+      {showForm && (
+        <ProfileForm
+          profile={editingProfile}
+          onClose={handleClose}
+          onSave={() => {
+            fetchProfiles()
+            handleClose()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+const styles = {
+  container: {
+    padding: '24px',
+    maxWidth: '600px',
+    margin: '0 auto',
+  },
+  title: {
+    fontSize: '24px',
+    marginBottom: '24px',
+    textAlign: 'center',
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+    gap: '16px',
+  },
+  addButton: {
+    height: '160px',
+    background: 'rgba(255,255,255,0.05)',
+    border: '2px dashed rgba(255,255,255,0.2)',
+    borderRadius: '12px',
+    color: '#ffffff',
+    fontSize: '16px',
+    cursor: 'pointer',
+  }
+}
+
+export default Profiles
