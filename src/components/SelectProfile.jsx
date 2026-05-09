@@ -16,10 +16,14 @@ function SelectProfile({ roomId, onSelect }) {
   }, [])
 
   async function fetchProfiles() {
+    const { data: { session } } = await supabase.auth.getSession()
+
     const { data } = await supabase
       .from('profiles')
       .select('*')
+      .eq('user_id', session?.user?.id)
       .order('created_at', { ascending: true })
+
     if (data) setProfiles(data)
   }
 
@@ -33,6 +37,8 @@ function SelectProfile({ roomId, onSelect }) {
   async function handleCreateAndJoin() {
     if (!nickname.trim()) return alert('El nombre es obligatorio')
     setLoading(true)
+
+    const { data: { session } } = await supabase.auth.getSession()
 
     let avatar_url = null
 
@@ -52,22 +58,31 @@ function SelectProfile({ roomId, onSelect }) {
 
     const { data, error } = await supabase
       .from('profiles')
-      .insert([{ nickname, avatar_url }])
+      .insert([{ nickname, avatar_url, user_id: session?.user?.id }])
       .select()
       .single()
 
+    if (!error) {
+      await supabase.from('room_players').insert([{
+        room_id: roomId,
+        profile_id: data.id,
+        stack: 0,
+      }])
+      onSelect(data)
+    }
+
     setLoading(false)
-    if (!error) onSelect(data)
   }
 
   async function handleJoinWithProfile(profile) {
-    const { data: { session } } = await supabase.auth.getSession()
-    await supabase.from('room_players').insert([{
+    const { error } = await supabase.from('room_players').insert([{
       room_id: roomId,
       profile_id: profile.id,
       stack: 0,
     }])
-    onSelect(profile)
+
+    if (error) console.error('Error al unirse:', error.message)
+    else onSelect(profile)
   }
 
   return (
@@ -273,12 +288,6 @@ const styles = {
     padding: '14px',
     fontWeight: 'bold',
     cursor: 'pointer',
-  },
-  avatarPreviewImg: {
-    width: '90px',
-    height: '90px',
-    borderRadius: '50%',
-    objectFit: 'cover',
   }
 }
 
