@@ -1,11 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { supabase } from '../supabaseClient'
 
 function GameTable({ room, player, players, onActionDone }) {
-  const [raiseAmount, setRaiseAmount] = useState(room.big_blind)
+  const [raiseAmount, setRaiseAmount] = useState(String(room.big_blind))
   const myPlayer = players.find(p => p.profile_id === player.id)
   const isMyTurn = room.current_player_id === myPlayer?.id
   const currentBet = room.current_bet || 0
+  const myBet = myPlayer?.current_bet || 0
+  const callAmount = Math.max(0, currentBet - myBet)
+
+  const total = players.length
+  const dealerIndex = players.findIndex(p => p.id === room.dealer_id)
+  const sbIndex = (dealerIndex + 1) % total
+  const bbIndex = (dealerIndex + 2) % total
 
   async function handleFold() {
     await supabase.from('room_players').update({ folded: true }).eq('id', myPlayer.id)
@@ -13,13 +20,12 @@ function GameTable({ room, player, players, onActionDone }) {
   }
 
   async function handleCall() {
-    const diff = currentBet - (myPlayer.current_bet || 0)
-    const actualDiff = Math.min(diff, myPlayer.stack)
+    const actual = Math.min(callAmount, myPlayer.stack)
     await supabase.from('room_players').update({
-      stack: myPlayer.stack - actualDiff,
-      current_bet: myPlayer.current_bet + actualDiff
+      stack: myPlayer.stack - actual,
+      current_bet: myBet + actual
     }).eq('id', myPlayer.id)
-    await supabase.from('rooms').update({ pot: room.pot + actualDiff }).eq('id', room.id)
+    await supabase.from('rooms').update({ pot: room.pot + actual }).eq('id', room.id)
     await advanceTurn()
   }
 
@@ -28,23 +34,22 @@ function GameTable({ room, player, players, onActionDone }) {
   }
 
   async function handleRaise() {
-    const total = currentBet + raiseAmount
-    const diff = total - (myPlayer.current_bet || 0)
-    const actualDiff = Math.min(diff, myPlayer.stack)
+    const amount = parseInt(raiseAmount)
+    if (!amount || amount <= 0) return alert('Cantidad inválida')
+    const total = currentBet + amount
+    const diff = Math.min(total - myBet, myPlayer.stack)
     await supabase.from('room_players').update({
-      stack: myPlayer.stack - actualDiff,
-      current_bet: total
+      stack: myPlayer.stack - diff,
+      current_bet: myBet + diff
     }).eq('id', myPlayer.id)
     await supabase.from('rooms').update({
-      pot: room.pot + actualDiff,
-      current_bet: total
+      pot: room.pot + diff,
+      current_bet: myBet + diff
     }).eq('id', room.id)
     await advanceTurn()
   }
 
   async function advanceTurn() {
-    const active = players.filter(p => !p.folded && p.id !== myPlayer.id)
-    if (active.length === 0) return
     const currentIndex = players.findIndex(p => p.id === room.current_player_id)
     let next = null
     for (let i = 1; i <= players.length; i++) {
@@ -57,27 +62,35 @@ function GameTable({ room, player, players, onActionDone }) {
     onActionDone()
   }
 
-  const activePlayers = players.filter(p => !p.folded)
   const positions = getPositions(players, myPlayer)
 
   return (
     <div style={styles.tableContainer}>
-      {positions.map(({ p, pos }) => (
-        <PlayerAvatar
-          key={p.id}
-          player={p}
-          position={pos}
-          isDealer={room.dealer_id === p.id}
-          isActive={room.current_player_id === p.id}
-          isMe={p.id === myPlayer?.id}
-        />
-      ))}
+      {positions.map(({ p, pos }, i) => {
+        const globalIndex = players.findIndex(pl => pl.id === p.id)
+        const isDealer = p.id === room.dealer_id
+        const isSB = globalIndex === sbIndex
+        const isBB = globalIndex === bbIndex
+        const isActive = p.id === room.current_player_id
+
+        return (
+          <PlayerAvatar
+            key={p.id}
+            player={p}
+            position={pos}
+            isDealer={isDealer}
+            isSB={isSB}
+            isBB={isBB}
+            isActive={isActive}
+          />
+        )
+      })}
 
       <div style={styles.potContainer}>
         <p style={styles.potLabel}>Bote</p>
         <p style={styles.potAmount}>{room.pot?.toLocaleString()}</p>
         {currentBet > 0 && (
-          <p style={styles.currentBet}>Apuesta actual: {currentBet}</p>
+          <p style={styles.currentBet}>Apuesta: {currentBet}</p>
         )}
       </div>
 
@@ -95,28 +108,37 @@ function GameTable({ room, player, players, onActionDone }) {
           disabled={!isMyTurn}
           onClick={currentBet === 0 ? handleCheck : handleCall}
         >
-          {currentBet === 0 ? 'PASAR' : 'IGUALAR'}
+          {currentBet === 0 ? 'PASAR' : `IGUALAR\n+${callAmount}`}
         </button>
 
         <div style={styles.raiseContainer}>
           <button
             style={isMyTurn ? styles.raiseControlBtn : styles.btnDisabled}
             disabled={!isMyTurn}
-            onClick={() => setRaiseAmount(Math.max(room.big_blind, raiseAmount - room.big_blind))}
+            onClick={() => setRaiseAmount(String(Math.max(room.big_blind, (parseInt(raiseAmount) || 0) - room.big_blind)))}
           >
             -
           </button>
-          <button
-            style={isMyTurn ? styles.raiseBtn : styles.btnDisabled}
-            disabled={!isMyTurn}
-            onClick={handleRaise}
-          >
-            SUBIR{'\n'}{raiseAmount}
-          </button>
+          <div style={styles.raiseMid}>
+            <button
+              style={isMyTurn ? styles.raiseBtn : styles.btnDisabled}
+              disabled={!isMyTurn}
+              onClick={handleRaise}
+            >
+              SUBIR
+            </button>
+            <input
+              style={styles.raiseInput}
+              type="number"
+              value={raiseAmount}
+              onChange={e => setRaiseAmount(e.target.value)}
+              disabled={!isMyTurn}
+            />
+          </div>
           <button
             style={isMyTurn ? styles.raiseControlBtn : styles.btnDisabled}
             disabled={!isMyTurn}
-            onClick={() => setRaiseAmount(raiseAmount + room.big_blind)}
+            onClick={() => setRaiseAmount(String((parseInt(raiseAmount) || 0) + room.big_blind))}
           >
             +
           </button>
@@ -129,8 +151,6 @@ function GameTable({ room, player, players, onActionDone }) {
 function getPositions(players, myPlayer) {
   const myIndex = players.findIndex(p => p.id === myPlayer?.id)
   const total = players.length
-  const positions = []
-
   const positionMap = {
     1: ['bottom'],
     2: ['bottom', 'top'],
@@ -139,27 +159,24 @@ function getPositions(players, myPlayer) {
     5: ['bottom', 'left', 'topLeft', 'topRight', 'right'],
     6: ['bottom', 'bottomLeft', 'topLeft', 'top', 'topRight', 'bottomRight'],
   }
-
   const posNames = positionMap[Math.min(total, 6)] || positionMap[6]
-
-  for (let i = 0; i < total; i++) {
-    const relIndex = (i - myIndex + total) % total
-    positions.push({
-      p: players[i],
-      pos: posNames[relIndex] || 'top'
-    })
-  }
-
-  return positions
+  return players.map((p, i) => ({
+    p,
+    pos: posNames[(i - myIndex + total) % total] || 'top'
+  }))
 }
 
-function PlayerAvatar({ player, position, isDealer, isActive, isMe }) {
+function PlayerAvatar({ player, position, isDealer, isSB, isBB, isActive }) {
   const posStyle = avatarPositions[position] || avatarPositions.top
   const size = isActive ? 70 : 50
 
   return (
     <div style={{ ...styles.avatarWrapper, ...posStyle }}>
-      {isDealer && <div style={styles.dealerBadge}>D</div>}
+      <div style={styles.badgeRow}>
+        {isDealer && <span style={styles.badgeD}>D</span>}
+        {isSB && <span style={styles.badgeSB}>SB</span>}
+        {isBB && <span style={styles.badgeBB}>BB</span>}
+      </div>
       <img
         src={player.profiles?.avatar_url || '/default-avatar.png'}
         alt={player.profiles?.nickname}
@@ -170,24 +187,28 @@ function PlayerAvatar({ player, position, isDealer, isActive, isMe }) {
           objectFit: 'cover',
           border: isActive ? '3px solid #4f46e5' : '2px solid rgba(255,255,255,0.2)',
           transition: 'all 0.3s',
+          opacity: player.folded ? 0.4 : 1,
         }}
       />
       <p style={styles.avatarName}>{player.profiles?.nickname}</p>
       <p style={styles.avatarStack}>{player.stack?.toLocaleString()}</p>
-      {player.folded && <div style={styles.foldedOverlay}>RETIRADO</div>}
+      {player.current_bet > 0 && (
+        <p style={styles.avatarBet}>🪙 {player.current_bet?.toLocaleString()}</p>
+      )}
+      {player.folded && <p style={styles.foldedText}>RETIRADO</p>}
     </div>
   )
 }
 
 const avatarPositions = {
-  bottom: { bottom: 140, left: '50%', transform: 'translateX(-50%)' },
+  bottom: { bottom: 150, left: '50%', transform: 'translateX(-50%)' },
   top: { top: 10, left: '50%', transform: 'translateX(-50%)' },
-  left: { top: '40%', left: 10, transform: 'translateY(-50%)' },
-  right: { top: '40%', right: 10, transform: 'translateY(-50%)' },
-  topLeft: { top: 10, left: '20%' },
-  topRight: { top: 10, right: '20%' },
-  bottomLeft: { bottom: 140, left: '20%' },
-  bottomRight: { bottom: 140, right: '20%' },
+  left: { top: '38%', left: 10, transform: 'translateY(-50%)' },
+  right: { top: '38%', right: 10, transform: 'translateY(-50%)' },
+  topLeft: { top: 10, left: '18%' },
+  topRight: { top: 10, right: '18%' },
+  bottomLeft: { bottom: 150, left: '18%' },
+  bottomRight: { bottom: 150, right: '18%' },
 }
 
 const styles = {
@@ -199,13 +220,13 @@ const styles = {
     borderRadius: '24px',
     border: '2px solid rgba(0,150,0,0.4)',
     margin: '8px 0',
-    minHeight: '300px',
+    minHeight: '320px',
   },
   potContainer: {
     position: 'absolute',
     top: '50%',
     left: '50%',
-    transform: 'translate(-50%, -50%)',
+    transform: 'translate(-50%, -60%)',
     textAlign: 'center',
   },
   potLabel: {
@@ -230,7 +251,7 @@ const styles = {
     display: 'flex',
     gap: '4px',
     padding: '8px',
-    background: 'rgba(0,0,0,0.5)',
+    background: 'rgba(0,0,0,0.6)',
     borderRadius: '0 0 22px 22px',
   },
   foldBtn: {
@@ -239,8 +260,8 @@ const styles = {
     border: 'none',
     borderRadius: '8px',
     color: '#fff',
-    padding: '12px 4px',
-    fontSize: '12px',
+    padding: '10px 4px',
+    fontSize: '11px',
     fontWeight: 'bold',
     cursor: 'pointer',
   },
@@ -250,28 +271,45 @@ const styles = {
     border: 'none',
     borderRadius: '8px',
     color: '#fff',
-    padding: '12px 4px',
-    fontSize: '12px',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-  },
-  raiseContainer: {
-    flex: 1.5,
-    display: 'flex',
-    gap: '2px',
-  },
-  raiseBtn: {
-    flex: 2,
-    background: '#4f46e5',
-    border: 'none',
-    borderRadius: '8px',
-    color: '#fff',
-    padding: '12px 4px',
+    padding: '10px 4px',
     fontSize: '11px',
     fontWeight: 'bold',
     cursor: 'pointer',
     whiteSpace: 'pre-line',
     textAlign: 'center',
+  },
+  raiseContainer: {
+    flex: 1.5,
+    display: 'flex',
+    gap: '2px',
+    alignItems: 'stretch',
+  },
+  raiseMid: {
+    flex: 2,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+  },
+  raiseBtn: {
+    background: '#4f46e5',
+    border: 'none',
+    borderRadius: '6px',
+    color: '#fff',
+    padding: '4px',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    flex: 1,
+  },
+  raiseInput: {
+    background: 'rgba(255,255,255,0.15)',
+    border: '1px solid rgba(255,255,255,0.3)',
+    borderRadius: '6px',
+    color: '#fff',
+    fontSize: '13px',
+    textAlign: 'center',
+    padding: '4px',
+    width: '100%',
   },
   raiseControlBtn: {
     flex: 1,
@@ -279,7 +317,7 @@ const styles = {
     border: 'none',
     borderRadius: '8px',
     color: '#fff',
-    fontSize: '18px',
+    fontSize: '20px',
     fontWeight: 'bold',
     cursor: 'pointer',
   },
@@ -289,8 +327,8 @@ const styles = {
     border: 'none',
     borderRadius: '8px',
     color: 'rgba(255,255,255,0.2)',
-    padding: '12px 4px',
-    fontSize: '12px',
+    padding: '10px 4px',
+    fontSize: '11px',
     cursor: 'not-allowed',
   },
   avatarWrapper: {
@@ -298,23 +336,40 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '2px',
+    gap: '1px',
   },
-  dealerBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
+  badgeRow: {
+    display: 'flex',
+    gap: '2px',
+    marginBottom: '2px',
+  },
+  badgeD: {
     background: '#fbbf24',
     color: '#000',
     borderRadius: '50%',
-    width: '20px',
-    height: '20px',
+    width: '18px',
+    height: '18px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '11px',
+    fontSize: '10px',
     fontWeight: 'bold',
-    zIndex: 10,
+  },
+  badgeSB: {
+    background: '#3b82f6',
+    color: '#fff',
+    borderRadius: '6px',
+    padding: '1px 4px',
+    fontSize: '9px',
+    fontWeight: 'bold',
+  },
+  badgeBB: {
+    background: '#ef4444',
+    color: '#fff',
+    borderRadius: '6px',
+    padding: '1px 4px',
+    fontSize: '9px',
+    fontWeight: 'bold',
   },
   avatarName: {
     fontSize: '10px',
@@ -330,18 +385,13 @@ const styles = {
     color: '#fbbf24',
     textAlign: 'center',
   },
-  foldedOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: 'rgba(0,0,0,0.6)',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '8px',
+  avatarBet: {
+    fontSize: '10px',
+    color: '#86efac',
+    textAlign: 'center',
+  },
+  foldedText: {
+    fontSize: '9px',
     color: '#ef4444',
     fontWeight: 'bold',
   }
