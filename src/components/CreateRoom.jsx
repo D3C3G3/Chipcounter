@@ -20,30 +20,37 @@ function CreateRoom({ onBack }) {
   }
 
   async function handleCreate() {
-    setLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    const userId = session?.user?.id
+  setLoading(true)
+  const { data: { session } } = await supabase.auth.getSession()
+  const userId = session?.user?.id
 
-    const code = generateCode()
+  const code = generateCode()
 
-    const { data, error } = await supabase
-      .from('rooms')
-      .insert([{
-        code,
-        host_id: userId,
-        stack_inicial: preset.stack,
-        small_blind: preset.sb,
-        big_blind: preset.bb,
-        rebuys,
-        addons,
-        status: 'waiting'
-      }])
-      .select()
-      .single()
+  const { data, error } = await supabase
+    .from('rooms')
+    .insert([{
+      code,
+      host_id: userId,
+      stack_inicial: preset.stack,
+      small_blind: preset.sb,
+      big_blind: preset.bb,
+      rebuys,
+      addons,
+      status: 'waiting'
+    }])
+    .select('id')
+    .single()
 
+  if (error) {
+    console.error('Error al crear sala:', error.message)
     setLoading(false)
-    if (!error) navigate(`/game/${data.id}`)
+    return
   }
+
+  navigate(`/game/${data.id}`)
+  setLoading(false)
+}
+
 
   return (
     <div style={styles.container}>
